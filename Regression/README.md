@@ -1,5 +1,7 @@
 # Regression
 
+https://daviddalpiaz.github.io/r4sl/regression-overview.html
+
 ## Regression (Numeric Response)
 1 What do we want? To make predictions on unseen data. (Predicting on data we already have is easy…) In other words, we want a model that generalizes well. That is, generalizes to unseen data.
 
