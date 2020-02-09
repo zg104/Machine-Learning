@@ -1,0 +1,257 @@
+---
+title: "Bias-Variance Tradeoff"
+author: "Zijing Gao"
+date: "2/8/2020"
+output: html_document
+---
+
+# Bias–Variance Tradeoff
+
+## Reducible and Irreducible Error
+
+EPE --> expected prediction error is for a random Y given a fixed x and a random f_hat.
+
+EPE = reducible error + irreducible error
+
+How to reduce the reducible error??
+
+We decompose the reducible error (MSE) into bias squared and variance.
+
+In a real world, it is impossible to find some f_hat which is unbiased.
+
+It turns out, there is a __bias-variance tradeoff__. That is, often, the more bias in our estimation, the lesser the variance. Similarly, less variance is often accompanied by more bias. Complex models tend to be unbiased, but highly variable. Simple models are often extremely biased, but have low variance.
+
+
+In the context of regression, models are biased when:
+
+-Parametric: The form of the model does not incorporate all the necessary variables, or the form of the relationship is too simple. For example, a parametric model assumes a linear relationship, but the true relationship is quadratic.
+
+-Non-parametric: The model provides too much smoothing.
+
+In the context of regression, models are variable when:
+
+-Parametric: The form of the model incorporates too many variables, or the form of the relationship is too complex. For example, a parametric model assumes a cubic relationship, but the true relationship is linear.
+
+-Non-parametric: The model does not provide enough smoothing. It is very, “wiggly.”
+
+So for us, to select a model that appropriately balances the tradeoff between bias and variance, and thus minimizes the reducible error, we need to select a model of the appropriate complexity for the data.
+
+Recall that when fitting models, we’ve seen that train RMSE decreases as model complexity is increasing. (Technically it is non-increasing.) For test RMSE, we expect to see a U-shaped curve. Importantly, test RMSE decreases, until a certain complexity, then begins to increase.
+
+Now we can understand why this is happening. The expected test RMSE is essentially the expected prediction error, which we now known decomposes into (squared) bias, variance, and the irreducible Bayes error. The following plots show three examples of this.
+
+
+
+
+## simulation
+
+We will illustrate these decompositions, most importantly the bias-variance tradeoff, through simulation. Suppose we would like to train a model to learn the true regression function function f(x) = x^2
+
+```{r}
+rm(list=ls())
+```
+
+
+```{r}
+f = function(x){
+  x ^ 2
+}
+```
+
+
+```{r}
+get_sim_data = function(f, sample_size = 100){
+  x <- runif(n = sample_size, min = 0, max = 1)
+  eps = rnorm(n = sample_size, mean = 0, sd = 0.75)
+  y = f(x) + eps
+  data.frame(x,y)
+}
+```
+
+
+To get a sense of the data and these four models, we generate one simulated dataset, and fit the four models.
+
+```{r}
+set.seed(1)
+sim_data = get_sim_data(f)
+```
+
+```{r}
+fit_0 = lm(y ~ 1,                   data = sim_data)
+fit_1 = lm(y ~ poly(x, degree = 1), data = sim_data)
+fit_2 = lm(y ~ poly(x, degree = 2), data = sim_data)
+fit_9 = lm(y ~ poly(x, degree = 9), data = sim_data)
+```
+
+
+We will now complete a simulation study to understand the relationship between the bias, variance, and mean squared error for the estimates for f(x) given by these four models at the point  x = 0.90
+
+We use simulation to complete this task, as performing the analytical calculations would prove to be rather tedious and difficult.
+
+
+```{r}
+set.seed(1)
+n_sims = 250
+n_models = 4
+x = data.frame(x = 0.90) # fixed points at which we make predictions
+predictions = matrix(0, nrow = n_sims, ncol = n_models)
+```
+
+
+```{r}
+get_sim_pred = function(){
+  for (sim in 1:n_sims) {
+
+  # simulate new, random, training data
+  # this is the only random portion of the bias, var, and mse calculations
+  # this allows us to calculate the expectation over D
+  sim_data = get_sim_data(f)
+
+  # fit models
+  fit_0 = lm(y ~ 1,                   data = sim_data)
+  fit_1 = lm(y ~ poly(x, degree = 1), data = sim_data)
+  fit_2 = lm(y ~ poly(x, degree = 2), data = sim_data)
+  fit_9 = lm(y ~ poly(x, degree = 9), data = sim_data)
+
+  # get predictions
+  predictions[sim, 1] = predict(fit_0, x)
+  predictions[sim, 2] = predict(fit_1, x)
+  predictions[sim, 3] = predict(fit_2, x)
+  predictions[sim, 4] = predict(fit_9, x)
+  }
+  colnames(predictions) = paste("fit", c(0,1,2,9), sep = "_")
+  return(predictions)
+}
+
+
+predictions = get_sim_pred()
+tail(predictions,10)
+```
+
+
+
+```{r}
+
+for(i in 1:n_sims){
+  sim_data = get_sim_data(f)
+  fit_0 = lm(y ~ 1,                   data = sim_data)
+  fit_1 = lm(y ~ poly(x, degree = 1), data = sim_data)
+  fit_2 = lm(y ~ poly(x, degree = 2), data = sim_data)
+  fit_9 = lm(y ~ poly(x, degree = 9), data = sim_data)
+
+  fit_model = list(fit_0,fit_1,fit_2,fit_9)
+  predictions[i,] = lapply(fit_model, predict, x)
+}
+
+tail(predictions,n=10)
+```
+
+
+
+
+
+Two things are immediately clear:
+
+As complexity increases, bias decreases. (The mean of a model’s predictions is closer to the truth.)
+
+As complexity increases, variance increases. (The variance about the mean of a model’s predictions increases.)
+
+
+We’ll use the empirical results of our simulations to estimate these quantities. (Yes, we’re using estimation to justify facts about estimation.) Note that we’ve actually used a rather small number of simulations. In practice we should use more, but for the sake of computation time, we’ve performed just enough simulations to obtain the desired results. (Since we’re estimating estimation, the bigger the sample size, the better.)
+
+
+```{r}
+get_mse = function(truth, estimate){
+  mean((truth-estimate)^2)
+}
+```
+
+
+```{r}
+get_bias = function(truth, estimate){
+  mean(estimate) - truth
+}
+```
+
+```{r}
+get_var = function(estimate){
+  mean((estimate - mean(estimate)))
+}
+```
+
+
+```{r}
+# library(dplyr)
+bias = apply(predictions, MARGIN = 2, FUN = get_bias, truth = f(x = 0.90))
+variance = apply(predictions,2,get_var)
+mse = apply(predictions,2,get_mse,truth = f(x = 0.90))
+
+result = data.frame(Degree = c(0,1,2,9),MSE = mse,Bias = bias^2,Var = variance)[,-1] %>% round(8)
+
+result
+```
+
+```{r}
+all(diff(bias^2)<0)
+all(diff(variance)>0)
+diff(mse)<0
+```
+
+
+```{r}
+bias ^ 2 + variance == mse
+```
+
+```{r}
+all.equal(bias^2 + variance, mse)
+```
+
+
+how to estimate EPE using $\hat f(X)$
+
+```{r}
+get_epe = function(realized, estimate){
+  mean((realized-esitimate)^2)
+}
+```
+
+```{r}
+y = rnorm(n = nrow(predictions), mean = f(x = 0.9), sd = 0.3)
+epe = apply(predictions,2,get_epe,realized = y)
+epe
+```
+
+
+what about the unconditional expected prediction error?
+
+```{r}
+set.seed(1)
+n_sims = 1000
+X = runif(n = n_sims, min = 0, max = 1)
+Y = rnorm(n = n_sims, mean = f(X), sd = 0.3)
+
+f_hat_X = rep(0, length(X))
+
+for (i in seq_along(X)) { # seq_along = 1:length(X)
+  sim_data = get_sim_data(f)
+  fit_2 = lm(y ~ poly(x, degree = 2), data = sim_data)
+  f_hat_X[i] = predict(fit_2, newdata = data.frame(x = X[i]))
+}
+
+mean((Y - f_hat_X) ^ 2)
+```
+
+## Estimating EPE
+
+We split the data set into trn_set and tst_set.
+
+trn_set is used to train the model and tst_set is used to esitimate the EPE. 
+
+
+How good is this estimate? Well, if $\mathcal{D}$ is a random sample from $(X, Y)$, and $\texttt{tst}$ are randomly sampled observations randomly sampled from $i = 1, 2, \ldots, n$, then it is a reasonable estimate. However, it is rather variable due to the randomness of selecting the observations for the test set. How variable? It turns out, pretty variable. While it's a justified estimate, eventually we'll introduce cross-validation as a procedure better suited to performing this estimation to select a model.
+
+
+
+
+
+

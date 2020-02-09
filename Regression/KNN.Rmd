@@ -1,0 +1,268 @@
+---
+title: "KNN demo"
+author: "Zijing Gao"
+date: "2020/2/6"
+output: html_document
+---
+
+
+# https://daviddalpiaz.github.io/r4sl/knn-reg.html
+
+```{r}
+# This code illustrates knn regression
+
+#install.packages("FNN")
+
+library(FNN)
+library(MASS)
+data(Boston)
+```
+
+
+```{r}
+set.seed(42)
+boston_idx = sample(1:nrow(Boston), size = 250)
+
+trn_boston = Boston[boston_idx, ] #train 
+tst_boston  = Boston[-boston_idx, ] #test
+```
+
+```{r}
+X_trn_boston = trn_boston["lstat"]
+X_tst_boston = tst_boston["lstat"]
+y_trn_boston = trn_boston["medv"]
+y_tst_boston = tst_boston["medv"]
+
+X_trn_boston_min = min(X_trn_boston)
+X_trn_boston_max = max(X_trn_boston)
+lstat_grid = data.frame(lstat = seq(X_trn_boston_min, X_trn_boston_max, 
+                                    by = 0.01))
+# We create an additional “test” set lstat_grid, that is a grid of lstat values at which we will predict medv in order to create graphics.
+```
+
+
+
+
+```{r}
+
+pred_001 = knn.reg(train = X_trn_boston, test = lstat_grid, y = y_trn_boston, k = 1)
+pred_005 = knn.reg(train = X_trn_boston, test = lstat_grid, y = y_trn_boston, k = 5)
+pred_010 = knn.reg(train = X_trn_boston, test = lstat_grid, y = y_trn_boston, k = 10)
+pred_050 = knn.reg(train = X_trn_boston, test = lstat_grid, y = y_trn_boston, k = 50)
+pred_100 = knn.reg(train = X_trn_boston, test = lstat_grid, y = y_trn_boston, k = 100)
+pred_250 = knn.reg(train = X_trn_boston, test = lstat_grid, y = y_trn_boston, k = 250)
+```
+
+```{r}
+# plot when k = 1
+plot(y_trn_boston$medv~X_trn_boston$lstat, col = "blue",xlab = "lstat", ylab = "medv")
+lines(pred_001$pred~lstat_grid$lstat, col = "orange")
+title(paste("k =", k))
+```
+
+
+```{r}
+k = c(1,5,10,50,100,250)
+
+
+myKNN = function(k,train,test,y){
+  
+  pred = matrix(0,nrow = nrow(test),ncol = length(k))
+  for(i in 1:length(k)){
+    pred[,i] = FNN::knn.reg(train,test,y,k=k[i])$pred
+  }
+  
+  par(mfrow = c(3,2))
+  for(j in 1:ncol(pred)){
+    plot(x = train[,1], y = y[,1], col = "blue",
+         pch = 20,
+         xlab = "lstat",
+         ylab = "medv")
+    lines(x = test[,1], y = pred[,j], col = "orange")
+    title(paste("k =", k[j]))
+  }
+}
+  
+}
+
+myKNN(k = k, train = X_trn_boston, test = lstat_grid, y = y_trn_boston)
+```
+
+
+We see that k = 1 is clearly overfitting, as k = 1 is a very complex, highly variable model. Conversely, k = 250 is clearly underfitting the data, as k = 250 is a very simple, low variance model. In fact, here it is predicting a simple average of all the data at each point.
+
+# choosing k
+
+low k = very complex model. very wiggly. specifically jagged
+high k = very inflexible model. very smooth.
+
+want: something in the middle which predicts well on unseen data
+
+That is, we want to the predicted values to minimize the EPE function
+
+__TODO__:
+
+Test MSE, and find the best test RMSE.
+
+```{r}
+rmse = function(actual, predicted){
+  sqrt(mean((unlist(actual-predicted))^2))
+}
+```
+
+```{r}
+# define helper function for getting knn.reg predictions
+# note: this function is highly specific to this situation and dataset
+make_knn_pred = function(k = 1, training, predicting) {
+  pred = FNN::knn.reg(train = training["lstat"], 
+                      test = predicting["lstat"], 
+                      y = training$medv, k = k)$pred
+  act  = predicting$medv
+  rmse(predicted = pred, actual = act)
+}
+
+k = c(1,5,10,25,50,250)
+
+# get requested train RMSEs
+knn_trn_rmse = sapply(k, make_knn_pred,
+                      training = trn_boston,
+                      predicting = trn_boston)
+
+# get requested test RMSEs
+knn_tst_rmse = sapply(k, make_knn_pred,
+                      training = trn_boston,
+                      predicting = tst_boston)
+
+# determin "best" k
+best_k = k[which.min(knn_tst_rmse)]
+
+# find overfitting, underfitting and "best" k
+
+fit_status = ifelse(k < best_k, "Over", ifelse(k == best_k, "Best", "Under"))
+
+# summarize results
+knn_results = data.frame(
+  k,
+  round(knn_trn_rmse, 2),
+  round(knn_tst_rmse, 2),
+  fit_status
+)
+
+colnames(knn_results) = c("k", "Train RMSE", "Test RMSE", "Fit?")
+
+# display results
+knitr::kable(knn_results, escape = FALSE, booktabs = TRUE)
+```
+
+
+# Linear vs Non-linear
+
+linear --> lm() works well
+
+non-linear --> knn works well
+
+# scaling data
+
+```{r}
+sim_knn_data = function(n_obs = 50) {
+  x1 = seq(0, 10, length.out = n_obs)
+  x2 = runif(n = n_obs, min = 0, max = 2)
+  x3 = runif(n = n_obs, min = 0, max = 1)
+  x4 = runif(n = n_obs, min = 0, max = 5)
+  x5 = runif(n = n_obs, min = 0, max = 5)
+  y = x1 ^ 2 + rnorm(n = n_obs)
+  data.frame(y, x1, x2, x3,x4, x5)
+}
+
+
+set.seed(42)
+knn_data = sim_knn_data()
+```
+
+```{r}
+par(mfrow = c(1,2))
+plot(x = knn_data$x2, y = knn_data$x1, type = "p", xlim = c(-3,3), ylim = c(-5,15),col = "blue", xlab = "x2", ylab = "x1")
+lines(x = scale(knn_data$x2), y = scale(knn_data$x1), type = "p", col = "red")
+legend("topright",legend = c("before scale", "after scale"),
+       col = c("blue", "red"), fill = 1:2,cex = 0.7)
+```
+
+
+```{r}
+# linear regression
+
+## before
+
+par(mfrow = c(1,2))
+
+x1_before = knn_data$x1
+x2_before = knn_data$x2
+
+lm.fit_1 = lm(x1_before~x2_before)
+plot(x1_before~x2_before)
+abline(lm.fit_1, col = "red")
+
+summary(lm.fit_1)
+
+## after
+
+x1_after = scale(knn_data$x1)
+x2_after = scale(knn_data$x2)
+
+lm.fit_2 = lm(x1_after~x2_after)
+plot(x1_after~x2_after)
+abline(lm.fit_2, col = "red")
+
+
+summary(lm.fit_2)
+
+```
+
+```{r}
+# RMSE 
+rmse(actual = x1_before, predicted = lm.fit_1$fitted.values)
+
+rmse(actual = x1_after, predicted = lm.fit_2$fitted.values)
+```
+
+```{r}
+# KNN
+
+set.seed(42)
+knn_data_trn = sim_knn_data()
+knn_data_tst = sim_knn_data()
+
+make_knn_pred = function(k = 1, X_trn, X_pred, y_trn, y_pred){
+  
+  
+  pred = FNN::knn.reg(train = X_trn, test = X_pred, y = y_trn, k = k)$pred
+  
+  act = y_pred
+  rmse(predicted = pred, actual = act)
+}
+```
+
+```{r}
+X_trn_boston = trn_boston[, !names(trn_boston) %in% c("medv")]
+X_tst_boston = tst_boston[, !names(tst_boston) %in% c("medv")]
+y_trn_boston = trn_boston["medv"]
+y_tst_boston = tst_boston["medv"]
+
+```
+
+```{r}
+scaled_pred = knn.reg(train = scale(X_trn_boston), test = scale(X_tst_boston), 
+                      y = y_trn_boston, k = 10)$pred
+unscaled_pred = knn.reg(train = X_trn_boston, test = X_tst_boston, 
+                        y = y_trn_boston, k = 10)$pred
+
+# test rmse
+rmse(predicted = scaled_pred, actual = y_tst_boston) # with scaling
+
+rmse(predicted = unscaled_pred, actual = y_tst_boston) # without scaling
+```
+
+
+
+
+
