@@ -1,4 +1,4 @@
-## Detailed Collation of Machine Learning
+## Detailed Collation of Classical Machine Learning Methods
 
 - Logistic Regression
 - SVM
